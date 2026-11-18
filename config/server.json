@@ -266,7 +266,7 @@
                 "zip_entry_path": null
             },
             "settings": {
-                "visited": "in"
+                "visited": "in, gb, th"
             },
             "secrets": [],
             "data_stale_minutes": 1440,
