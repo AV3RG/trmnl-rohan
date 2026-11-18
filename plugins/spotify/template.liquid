@@ -1,0 +1,23 @@
+<div class="view view--{{ size }}">
+  <div class="layout layout--row gap--large">
+    {% if has_track %}
+      {% if art_url != "" %}
+        <img class="image image--dither" src="{{ art_url }}" style="width: 320px; height: 320px; object-fit: cover; border-radius: 12px;">
+      {% endif %}
+      <div class="col gap--medium" style="flex: 1; min-width: 0;">
+        <span class="label label--inverted" style="align-self: flex-start;">{% if playing %}Now playing{% else %}Last played{% endif %}</span>
+        <span class="value value--large" data-clamp="3">{{ track }}</span>
+        <span class="title" data-clamp="2">{{ artist }}</span>
+        <span class="description" data-clamp="2">{{ album }} · {{ duration }}</span>
+        {% if device != "" %}<span class="label">on {{ device }}</span>{% endif %}
+      </div>
+    {% else %}
+      <span class="title">Nothing played yet</span>
+    {% endif %}
+  </div>
+
+  <div class="title_bar">
+    <span class="title">Spotify</span>
+    <span class="instance">updated {{ updated_at }}</span>
+  </div>
+</div>

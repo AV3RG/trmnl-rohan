@@ -1,3 +1,4 @@
 .env
 backups/
 plugins/*/preview.png
+plugins/*/.token

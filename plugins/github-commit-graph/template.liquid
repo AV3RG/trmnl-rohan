@@ -1,0 +1,86 @@
+{% comment %}Port of TRMNL's hosted GitHub Commit Graph plugin (github.com/usetrmnl/plugins).{% endcomment %}
+{% assign username = trmnl.plugin_settings.custom_fields_values.username %}
+{% assign cal = data.user.contributionsCollection.contributionCalendar %}
+{% assign longest = 0 %}{% assign run = 0 %}{% assign run_before_today = 0 %}
+{% assign most = 0 %}{% assign day_count = 0 %}{% assign last_count = 0 %}
+{% for week in cal.weeks %}
+  {% assign last_week = forloop.last %}
+  {% for day in week.contributionDays %}
+    {% assign day_count = day_count | plus: 1 %}
+    {% if last_week and forloop.last %}{% assign run_before_today = run %}{% assign last_count = day.contributionCount %}{% endif %}
+    {% if day.contributionCount > 0 %}
+      {% assign run = run | plus: 1 %}
+      {% if run > longest %}{% assign longest = run %}{% endif %}
+    {% else %}
+      {% assign run = 0 %}
+    {% endif %}
+    {% if day.contributionCount > most %}{% assign most = day.contributionCount %}{% endif %}
+  {% endfor %}
+{% endfor %}
+{% if last_count > 0 %}{% assign current = run %}{% else %}{% assign current = run_before_today %}{% endif %}
+
+<style>
+  /* Shades are pixel patterns, because the screen is pure black and white. */
+  #commit_graph { display: grid; grid-template-rows: repeat(7, 1fr); grid-auto-flow: column; gap: 3px; width: 100%; }
+  #commit_graph .day { aspect-ratio: 1; border-radius: 2px; }
+  #commit_graph .l1 { box-shadow: inset 0 0 0 1px #000; }
+  #commit_graph .l2 { box-shadow: inset 0 0 0 1px #000; background: conic-gradient(#000 25%, #fff 0) 0 0 / 4px 4px; }
+  #commit_graph .l3 { box-shadow: inset 0 0 0 1px #000; background: conic-gradient(#000 25%, #fff 0 50%, #000 0 75%, #fff 0) 0 0 / 4px 4px; }
+  #commit_graph .l4 { box-shadow: inset 0 0 0 1px #000; background: conic-gradient(#fff 25%, #000 0) 0 0 / 4px 4px; }
+  #commit_graph .l5 { background: #000; }
+</style>
+
+<div class="view view--{{ size }}">
+  <div class="layout layout--col gap--space-between">
+    {% if cal %}
+      <div class="grid grid--cols-2">
+        <div class="item">
+          <div class="content">
+            <span class="value value--tnums value--xxxlarge">{{ cal.totalContributions }}</span>
+            <span class="label">Contributions in last year</span>
+          </div>
+        </div>
+        <div class="flex flex--col gap--medium">
+          <div class="grid grid--cols-2">
+            <div class="item"><div class="content">
+              <span class="value value--tnums">{{ longest }}</span><span class="label">Longest streak</span>
+            </div></div>
+            <div class="item"><div class="content">
+              <span class="value value--tnums">{{ current }}</span><span class="label">Current streak</span>
+            </div></div>
+          </div>
+          <div class="divider"></div>
+          <div class="grid grid--cols-2">
+            <div class="item"><div class="content">
+              <span class="value value--tnums">{{ most }}</span><span class="label">Most in a day</span>
+            </div></div>
+            <div class="item"><div class="content">
+              <span class="value value--tnums">{{ cal.totalContributions | times: 1.0 | divided_by: day_count | round: 2 }}</span><span class="label">Average per day</span>
+            </div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div id="commit_graph">
+        {% for week in cal.weeks %}{% for day in week.contributionDays %}{% assign c = day.contributionCount %}
+          {% if c == 0 %}{% assign shade = "" %}
+          {% elsif c <= 2 %}{% assign shade = "l1" %}
+          {% elsif c <= 5 %}{% assign shade = "l2" %}
+          {% elsif c <= 10 %}{% assign shade = "l3" %}
+          {% elsif c <= 20 %}{% assign shade = "l4" %}
+          {% else %}{% assign shade = "l5" %}{% endif %}
+          <span class="day {{ shade }}"></span>
+        {% endfor %}{% endfor %}
+      </div>
+    {% else %}
+      <span class="title">Cannot fetch GitHub data for {{ username }}</span>
+    {% endif %}
+  </div>
+
+  <div class="title_bar">
+    <span class="title">GitHub</span>
+    <span class="instance">{{ username }}</span>
+  </div>
+</div>

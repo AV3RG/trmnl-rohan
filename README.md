@@ -19,6 +19,9 @@ Self-hosted [TRMNL](https://trmnl.com) server ([LaraPaper](https://github.com/us
 | `make update` | Back up, then pull the version set in `.env` (`LARAPAPER_VERSION`) and restart. |
 | `make backup` | Copy the sqlite database into `backups/`. |
 | `make shell` | Shell inside the container (`php artisan ...`). |
+| `make config-export` | Save plugins, settings, playlists and device into `config/server.json`. |
+| `make config-restore` | Rebuild a server from `config/server.json`. |
+| `make plugin-deploy DIR=... NAME="..."` | Upload a custom plugin from `plugins/` and write its `preview.png`. |
 
 Settings live in `.env` (see `.env.example`). Data lives in the Docker volumes `trmnl-rohan_database` and `trmnl-rohan_generated`.
 
@@ -40,3 +43,20 @@ Screens rotate through the device's playlist. Custom plugins are made in the adm
 - `collect.py` gathers the stats and posts them to the plugin's webhook (`MACHINE_HEALTH_WEBHOOK` in `.env`). `collect.py --print` shows the payload without sending.
 - A systemd user timer runs it every 5 minutes: `systemctl --user status trmnl-machine-health.timer`. Copies of the unit files are in `systemd/`.
 - `template.liquid` is the screen layout. After editing it, run `make plugin-deploy DIR=machine-health NAME="Machine Health"`, which uploads it and writes `preview.png`.
+
+### Other custom plugins
+
+- `plugins/spotify/`: now playing. `collect.py` runs every minute from a systemd user timer and needs `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` and `SPOTIFY_WEBHOOK` in `.env`. Sign in once with `collect.py auth-url`, then `collect.py auth-code <redirected url>`.
+- `plugins/github-commit-graph/`: a port of TRMNL's hosted GitHub Commit Graph plugin. It polls GitHub itself; `plugin.json` holds its data source and settings fields, and the token is entered in the admin UI.
+
+## Configuration in git
+
+`config/server.json` records every installed plugin (with where it was installed from), its non-secret settings, the playlists and the device. Run `make config-export` after changing things in the admin UI, then commit the file.
+
+Tokens, the device API key and `.env` are never exported. To rebuild on a fresh machine:
+
+1. `make up`, then register the account in the admin UI.
+2. `make config-restore`. It prints the webhook URLs of the custom plugins and the list of plugins that need a token.
+3. Put the new webhook URLs in `.env`, re-enter the tokens under Plugins, and enter the new device API key on the iPad.
+
+A plugin installed through the admin UI has no recorded source until you add one to its entry in `config/server.json`; `make config-export` warns about these.

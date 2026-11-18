@@ -1,0 +1,7 @@
+[Unit]
+Description=Push Spotify playback to the TRMNL Spotify plugin
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.t3/projects/trmnl-rohan/.env
+ExecStart=/usr/bin/python3 %h/.t3/projects/trmnl-rohan/plugins/spotify/collect.py
