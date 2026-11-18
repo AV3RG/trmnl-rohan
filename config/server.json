@@ -3,7 +3,7 @@
     "device": {
         "name": "iPad",
         "mac_address": "00:00:00:00:00:00",
-        "default_refresh_interval": 1,
+        "default_refresh_interval": 5,
         "width": 800,
         "height": 480
     },
