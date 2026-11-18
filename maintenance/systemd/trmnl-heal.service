@@ -1,0 +1,6 @@
+[Unit]
+Description=Re-render TRMNL plugin images that went missing
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/make -C %h/.t3/projects/trmnl-rohan heal

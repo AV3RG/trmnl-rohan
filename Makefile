@@ -1,7 +1,7 @@
 # Override to point at another instance, e.g. COMPOSE="docker compose -p test -f other.yml"
 COMPOSE ?= docker compose
 
-.PHONY: init up down restart logs ps shell update backup plugin-deploy config-export config-restore
+.PHONY: init up down restart logs ps shell update backup plugin-deploy config-export config-restore heal
 
 init: ## create .env with a fresh APP_KEY (no-op if .env exists)
 	@test -f .env || { sed "s|^APP_KEY=.*|APP_KEY=base64:$$(openssl rand -base64 32)|" .env.example > .env && echo "wrote .env"; }
@@ -57,3 +57,8 @@ config-restore:
 	$(COMPOSE) cp config/server.json app:/tmp/server.json
 	$(COMPOSE) cp config/restore.php app:/tmp/config-restore.php
 	@$(COMPOSE) exec -T app php artisan tinker --execute='require "/tmp/config-restore.php";'
+
+# Re-render plugins whose image file is missing (otherwise the device shows the TRMNL logo)
+heal:
+	@$(COMPOSE) cp maintenance/heal-images.php app:/tmp/heal-images.php 2>/dev/null
+	@$(COMPOSE) exec -T app php artisan tinker --execute='require "/tmp/heal-images.php";' | grep ^HEALED || true

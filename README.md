@@ -21,6 +21,7 @@ Self-hosted [TRMNL](https://trmnl.com) server ([LaraPaper](https://github.com/us
 | `make shell` | Shell inside the container (`php artisan ...`). |
 | `make config-export` | Save plugins, settings, playlists and device into `config/server.json`. |
 | `make config-restore` | Rebuild a server from `config/server.json`. |
+| `make heal` | Re-render any plugin whose image file went missing (it shows the TRMNL logo otherwise). A systemd user timer from `maintenance/systemd/` runs this every minute. |
 | `make plugin-deploy DIR=... NAME="..."` | Upload a custom plugin from `plugins/` and write its `preview.png`. |
 
 Settings live in `.env` (see `.env.example`). Data lives in the Docker volumes `trmnl-rohan_database` and `trmnl-rohan_generated`.
@@ -57,6 +58,6 @@ Tokens, the device API key and `.env` are never exported. To rebuild on a fresh 
 
 1. `make up`, then register the account in the admin UI.
 2. `make config-restore`. It prints the list of plugins that need a token.
-3. Re-enter the tokens under Plugins, enter the new device API key on the iPad, and install the systemd timers from `plugins/*/systemd/`.
+3. Re-enter the tokens under Plugins, enter the new device API key on the iPad, and install the systemd timers from `plugins/*/systemd/` and `maintenance/systemd/`.
 
 A plugin installed through the admin UI has no recorded source until you add one to its entry in `config/server.json`; `make config-export` warns about these.
