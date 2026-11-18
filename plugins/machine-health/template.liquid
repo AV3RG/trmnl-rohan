@@ -1,0 +1,72 @@
+<div class="view view--{{ size }}">
+<div class="layout layout--col layout--stretch-x gap--medium">
+  <div class="grid grid--cols-4">
+    <div class="item">
+      <div class="content">
+        <span class="value value--large value--tnums">{{ load }}</span>
+        <span class="label">Load · {{ load_pct }}% of CPU</span>
+      </div>
+    </div>
+    <div class="item">
+      <div class="content">
+        <span class="value value--large value--tnums">{{ mem_pct }}%</span>
+        <span class="label">Memory used</span>
+      </div>
+    </div>
+    <div class="item">
+      <div class="content">
+        <span class="value value--large value--tnums">{{ disk_pct }}%</span>
+        <span class="label">Disk · {{ disk_free_gb }} GB free</span>
+      </div>
+    </div>
+    <div class="item">
+      <div class="content">
+        <span class="value value--large value--tnums">{% if cpu_temp %}{{ cpu_temp }}°{% else %}–{% endif %}</span>
+        <span class="label">CPU{% if ssd_temp %} · SSD {{ ssd_temp }}°{% endif %}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grid grid--cols-2 gap--large">
+    <div class="col gap--small">
+      <span class="label label--underline">Containers{% if containers_down > 0 %} · {{ containers_down }} down{% endif %}</span>
+      {% for c in containers limit: 7 %}
+        <div class="flex flex--row flex--between">
+          <span class="title title--small">{% if c.ok %}●{% else %}×{% endif %} {{ c.name | truncate: 26 }}</span>
+          <span class="label {% unless c.ok %}label--inverted{% endunless %}">{{ c.status | truncate: 22 }}</span>
+        </div>
+      {% else %}
+        <span class="description">No containers</span>
+      {% endfor %}
+      {% if containers.size > 7 %}<span class="description">+ {{ containers.size | minus: 7 }} more</span>{% endif %}
+    </div>
+
+    <div class="col gap--small">
+      <span class="label label--underline">Network</span>
+      <div class="flex flex--row flex--between">
+        <span class="title title--small">{% if wifi.connected %}● {{ wifi.ssid | truncate: 22 }}{% else %}× Wi-Fi down{% endif %}</span>
+        {% if wifi.connected %}<span class="label">{{ wifi.signal_dbm }} dBm · {{ wifi.rx_mbps }} Mbps</span>{% endif %}
+      </div>
+      {% for p in tailscale limit: 4 %}
+        <div class="flex flex--row flex--between">
+          <span class="title title--small">{% if p.online %}●{% else %}×{% endif %} {{ p.name | truncate: 22 }}</span>
+          <span class="label">{% if p.online %}online{% else %}offline{% endif %}</span>
+        </div>
+      {% endfor %}
+      {% if battery %}
+        <div class="flex flex--row flex--between">
+          <span class="title title--small">Battery</span>
+          <span class="label">{{ battery.pct }}% · {{ battery.status }}</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="title_bar">
+  <span class="title">{{ host }}</span>
+  <span class="instance">up {{ uptime }} · updated {{ updated_at }}</span>
+</div>
+</div>

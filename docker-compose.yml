@@ -1,0 +1,27 @@
+# LaraPaper — self-hosted TRMNL (BYOS) server.
+# Admin UI:      http://<this-machine>:4567
+# iPad display:  http://<this-machine>:4567/mirror/
+name: trmnl-rohan
+
+services:
+  app:
+    image: ghcr.io/usetrmnl/larapaper:${LARAPAPER_VERSION:-latest}
+    container_name: trmnl-rohan
+    restart: unless-stopped
+    ports:
+      - "${PORT:-4567}:8080"
+    environment:
+      - APP_KEY=${APP_KEY:?run `make init` to generate .env}
+      - APP_URL=${APP_URL}
+      - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
+      - PHP_OPCACHE_ENABLE=1
+      - TRMNL_PROXY_REFRESH_MINUTES=15
+      - DB_DATABASE=database/storage/database.sqlite
+    volumes:
+      - database:/var/www/html/database/storage
+      - generated:/var/www/html/storage/app/public/images/generated
+
+# Named volumes: Docker seeds them from the image (empty sqlite db, right owner).
+volumes:
+  database:
+  generated:

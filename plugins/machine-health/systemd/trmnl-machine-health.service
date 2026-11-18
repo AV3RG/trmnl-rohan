@@ -1,0 +1,7 @@
+[Unit]
+Description=Push machine stats to the TRMNL Machine Health plugin
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.t3/projects/trmnl-rohan/.env
+ExecStart=/usr/bin/python3 %h/.t3/projects/trmnl-rohan/plugins/machine-health/collect.py
