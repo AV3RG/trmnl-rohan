@@ -3,3 +3,4 @@ backups/
 plugins/*/preview.png
 plugins/*/.token
 feeds/
+__pycache__/
