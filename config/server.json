@@ -60,10 +60,6 @@
                 {
                     "plugin": "Visited Countries",
                     "is_active": true
-                },
-                {
-                    "plugin": "Motivational Quotes",
-                    "is_active": true
                 }
             ]
         }
@@ -280,15 +276,6 @@
                 "polling_header": null,
                 "polling_body": null
             }
-        },
-        {
-            "name": "Motivational Quotes",
-            "source": {
-                "dir": "motivational-quotes"
-            },
-            "settings": {},
-            "secrets": [],
-            "data_stale_minutes": 60
         }
     ]
 }
