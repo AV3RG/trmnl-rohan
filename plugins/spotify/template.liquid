@@ -2,7 +2,7 @@
   <div class="layout layout--row gap--large">
     {% if has_track %}
       {% if art_url != "" %}
-        <img class="image image--dither" src="{{ art_url }}" style="width: 320px; height: 320px; object-fit: cover; border-radius: 12px;">
+        <img class="image image--dither" src="{{ art_url }}" style="filter: invert(1); width: 320px; height: 320px; object-fit: cover; border-radius: 12px;">
       {% endif %}
       <div class="col gap--medium" style="flex: 1; min-width: 0;">
         <span class="label label--inverted" style="align-self: flex-start;">{% if playing %}Now playing{% else %}Last played{% endif %}</span>

@@ -1,0 +1,6 @@
+{
+    "Flyover - ISS live location": ".screen { filter: invert(1); }",
+    "Moonface": ".screen { filter: invert(1); }",
+    "Formula 1 Race Weekend": "img[src*=\"/flags/\"], svg.qr-code { filter: invert(1) !important; }",
+    "Tailscale": ".label.label--error { background: none !important; color: #000 !important; padding: 0 !important; }"
+}

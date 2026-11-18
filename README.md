@@ -22,6 +22,7 @@ Self-hosted [TRMNL](https://trmnl.com) server ([LaraPaper](https://github.com/us
 | `make config-export` | Save plugins, settings, playlists and device into `config/server.json`. |
 | `make config-restore` | Rebuild a server from `config/server.json`. |
 | `make heal` | Re-render any plugin whose image file went missing (it shows the TRMNL logo otherwise). A systemd user timer from `maintenance/systemd/` runs this every minute. |
+| `make dark-mode` | Re-apply the CSS patches in `config/dark-mode.json`. The screens are tuned for the mirror page's **Dark** display mode, which inverts the whole picture; the patches pre-invert photos, flags, QR codes and already-dark screens so they come out right. Also run by `make config-restore`. |
 | `make plugin-deploy DIR=... NAME="..."` | Upload a custom plugin from `plugins/` and write its `preview.png`. |
 
 Settings live in `.env` (see `.env.example`). Data lives in the Docker volumes `trmnl-rohan_database` and `trmnl-rohan_generated`.
