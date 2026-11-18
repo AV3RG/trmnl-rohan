@@ -14,6 +14,8 @@ services:
       - APP_KEY=${APP_KEY:?run `make init` to generate .env}
       - APP_URL=${APP_URL}
       - APP_TIMEZONE=${APP_TIMEZONE:-UTC}
+      # Trust the HTTPS proxy in front (tailscale serve) so links are generated as https
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-}
       - PHP_OPCACHE_ENABLE=1
       - TRMNL_PROXY_REFRESH_MINUTES=15
       - DB_DATABASE=database/storage/database.sqlite

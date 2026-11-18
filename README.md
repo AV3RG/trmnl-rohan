@@ -7,7 +7,7 @@ Self-hosted [TRMNL](https://trmnl.com) server ([LaraPaper](https://github.com/us
 | What | URL |
 | --- | --- |
 | Admin UI (devices, playlists, plugins) | http://192.168.1.20:4567 |
-| iPad display page | http://192.168.1.20:4567/mirror/ |
+| iPad display page (HTTPS, Tailscale devices only) | https://zephyrus01.tail1b7711.ts.net/mirror/ |
 
 ## Commands
 
@@ -28,9 +28,9 @@ Settings live in `.env` (see `.env.example`). Data lives in the Docker volumes `
 ## iPad setup
 
 1. In the admin UI, register the account, then Devices → Add New Device. Give it any MAC address and note its API key.
-2. On the iPad open the display page in Safari, enter the server URL (`http://192.168.1.20:4567`) and the device API key, and turn on "Simulate physical device" so it cycles the playlist.
+2. On the iPad open the display page in Safari, enter the server URL (`https://zephyrus01.tail1b7711.ts.net`) and the device API key, and turn on "Simulate physical device" so it cycles the playlist.
 3. Share → Add to Home Screen to run it without browser bars.
-4. Set Settings → Display & Brightness → Auto-Lock to Never. The page's own keep-awake toggle needs HTTPS, which this setup does not have.
+4. Turn on Screen Wake Lock in the page's setup form. It needs HTTPS, which `tailscale serve --bg 4567` provides on this machine (the setting survives reboots); the iPad must be connected to Tailscale. `APP_URL` in `.env` must be the HTTPS address so screen images load over HTTPS too.
 
 ## Screens and plugins
 
