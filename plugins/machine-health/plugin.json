@@ -1,0 +1,8 @@
+{
+  "data_strategy": "polling",
+  "data_stale_minutes": 5,
+  "polling_verb": "get",
+  "polling_url": "http://127.0.0.1:8080/feeds/machine-health.json",
+  "polling_header": "",
+  "polling_body": ""
+}

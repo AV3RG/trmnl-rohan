@@ -22,6 +22,8 @@ services:
     volumes:
       - database:/var/www/html/database/storage
       - generated:/var/www/html/storage/app/public/images/generated
+      # JSON written by the collectors in plugins/; the plugins poll it from inside the container
+      - ./feeds:/var/www/html/public/feeds:ro
 
 # Named volumes: Docker seeds them from the image (empty sqlite db, right owner).
 volumes:

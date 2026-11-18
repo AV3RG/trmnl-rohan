@@ -40,13 +40,13 @@ Screens rotate through the device's playlist. Custom plugins are made in the adm
 
 `plugins/machine-health/` holds the screen showing this machine's load, memory, disk, temperatures, containers, Wi-Fi and Tailscale peers.
 
-- `collect.py` gathers the stats and posts them to the plugin's webhook (`MACHINE_HEALTH_WEBHOOK` in `.env`). `collect.py --print` shows the payload without sending.
+- `collect.py` gathers the stats and writes them to `feeds/machine-health.json`, which the server serves at `/feeds/` and the plugin polls (see `plugin.json`). `collect.py --print` shows the payload without writing.
 - A systemd user timer runs it every 5 minutes: `systemctl --user status trmnl-machine-health.timer`. Copies of the unit files are in `systemd/`.
 - `template.liquid` is the screen layout. After editing it, run `make plugin-deploy DIR=machine-health NAME="Machine Health"`, which uploads it and writes `preview.png`.
 
 ### Other custom plugins
 
-- `plugins/spotify/`: now playing. `collect.py` runs every minute from a systemd user timer and needs `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` and `SPOTIFY_WEBHOOK` in `.env`. Sign in once with `collect.py auth-url`, then `collect.py auth-code <redirected url>`.
+- `plugins/spotify/`: now playing. `collect.py` runs every minute from a systemd user timer, writes `feeds/spotify.json`, and needs `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env`. Sign in once with `collect.py auth-url`, then `collect.py auth-code <redirected url>`.
 - `plugins/github-commit-graph/`: a port of TRMNL's hosted GitHub Commit Graph plugin. It polls GitHub itself; `plugin.json` holds its data source and settings fields, and the token is entered in the admin UI.
 
 ## Configuration in git
@@ -56,7 +56,7 @@ Screens rotate through the device's playlist. Custom plugins are made in the adm
 Tokens, the device API key and `.env` are never exported. To rebuild on a fresh machine:
 
 1. `make up`, then register the account in the admin UI.
-2. `make config-restore`. It prints the webhook URLs of the custom plugins and the list of plugins that need a token.
-3. Put the new webhook URLs in `.env`, re-enter the tokens under Plugins, and enter the new device API key on the iPad.
+2. `make config-restore`. It prints the list of plugins that need a token.
+3. Re-enter the tokens under Plugins, enter the new device API key on the iPad, and install the systemd timers from `plugins/*/systemd/`.
 
 A plugin installed through the admin UI has no recorded source until you add one to its entry in `config/server.json`; `make config-export` warns about these.

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Collect this machine's stats and push them to the Machine Health plugin webhook.
+"""Collect this machine's stats into feeds/machine-health.json, which the Machine Health plugin polls.
 
-Needs MACHINE_HEALTH_WEBHOOK in the environment (set in the project's .env).
-Run with --print to see the payload without sending it.
+Run with --print to see the payload without writing it.
 """
 import glob
 import json
@@ -13,7 +12,6 @@ import socket
 import subprocess
 import sys
 import time
-import urllib.request
 
 
 def run(*cmd):
@@ -134,21 +132,24 @@ def collect():
     }
 
 
+def write_feed(name, payload):
+    """Write the payload where the server's plugin polls it (feeds/<name>.json), atomically."""
+    feeds = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "feeds")
+    os.makedirs(feeds, exist_ok=True)
+    tmp = os.path.join(feeds, f".{name}.tmp")
+    with open(tmp, "w") as f:
+        json.dump(payload, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(feeds, f"{name}.json"))
+    print(f"wrote feeds/{name}.json")
+
+
 def main():
     payload = collect()
     if "--print" in sys.argv:
         print(json.dumps(payload, indent=2))
         return
-    url = os.environ.get("MACHINE_HEALTH_WEBHOOK")
-    if not url:
-        sys.exit("MACHINE_HEALTH_WEBHOOK is not set")
-    req = urllib.request.Request(
-        url,
-        data=json.dumps({"merge_variables": payload}).encode(),
-        headers={"Content-Type": "application/json", "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        print(resp.status, resp.read().decode())
+    write_feed("machine-health", payload)
 
 
 if __name__ == "__main__":

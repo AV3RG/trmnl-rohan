@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Push the current (or last played) Spotify track to the Spotify plugin webhook.
+"""Write the current (or last played) Spotify track to feeds/spotify.json, which the Spotify plugin polls.
 
 Environment (from the project's .env):
   SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET   your app at developer.spotify.com
-  SPOTIFY_WEBHOOK                            the plugin's webhook URL
 
 Usage:
   collect.py auth-url          print the link to open in a browser
   collect.py auth-listen       wait on 127.0.0.1:8888 for Spotify's redirect, then save the token
   collect.py auth-code <url>   finish with the redirected URL pasted by hand (browser on another machine)
-  collect.py [--print]         fetch playback and push it (or just print it)
+  collect.py [--print]         fetch playback and write the feed (or just print it)
 """
 import base64
 import hashlib
@@ -148,6 +147,18 @@ def collect():
     return payload
 
 
+def write_feed(name, payload):
+    """Write the payload where the server's plugin polls it (feeds/<name>.json), atomically."""
+    feeds = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "feeds")
+    os.makedirs(feeds, exist_ok=True)
+    tmp = os.path.join(feeds, f".{name}.tmp")
+    with open(tmp, "w") as f:
+        json.dump(payload, f)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, os.path.join(feeds, f"{name}.json"))
+    print(f"wrote feeds/{name}.json")
+
+
 def main():
     args = sys.argv[1:]
     if args[:1] == ["auth-url"]:
@@ -161,14 +172,7 @@ def main():
         if "--print" in args:
             print(json.dumps(payload, indent=2))
             return
-        req = urllib.request.Request(
-            env("SPOTIFY_WEBHOOK"),
-            data=json.dumps({"merge_variables": payload}).encode(),
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            print(resp.status, resp.read().decode())
-
+        write_feed("spotify", payload)
 
 if __name__ == "__main__":
     try:
