@@ -1,0 +1,6 @@
+[Unit]
+Description=Push T3 Code thread status to the TRMNL T3 Threads plugin
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.t3/projects/trmnl-rohan/plugins/t3-threads/collect.py

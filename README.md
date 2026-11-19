@@ -50,6 +50,7 @@ Screens rotate through the device's playlist. Custom plugins are made in the adm
 ### Other custom plugins
 
 - `plugins/spotify/`: now playing. `collect.py` runs every minute from a systemd user timer, writes `feeds/spotify.json`, and needs `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env`. Sign in once with `collect.py auth-url`, then `collect.py auth-code <redirected url>`.
+- `plugins/t3-threads/`: T3 Code threads, split into Working (a run is in progress) and Ready (stopped and not yet settled). `collect.py` reads `~/.t3/userdata/statev2.sqlite` read-only every minute from a systemd user timer and writes `feeds/t3-threads.json`.
 - `plugins/github-commit-graph/`: a port of TRMNL's hosted GitHub Commit Graph plugin. It polls GitHub itself; `plugin.json` holds its data source and settings fields, and the token is entered in the admin UI.
 
 ## Configuration in git

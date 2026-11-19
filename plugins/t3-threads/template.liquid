@@ -1,0 +1,51 @@
+<div class="view view--{{ size }}">
+<div class="layout layout--col layout--stretch-x layout--top gap--medium">
+  <div class="grid grid--cols-2 gap--large">
+    <div class="item">
+      <div class="content">
+        <span class="value value--xlarge value--tnums">{{ working_count }}</span>
+        <span class="label">Working</span>
+      </div>
+    </div>
+    <div class="item">
+      <div class="content">
+        <span class="value value--xlarge value--tnums">{{ ready_count }}</span>
+        <span class="label">Ready for you</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grid grid--cols-2 gap--large">
+    <div class="col gap--small">
+      {% for t in working limit: 5 %}
+        <div class="col gap--xsmall">
+          <span class="title title--small" data-clamp="1">{{ t.title | truncate: 38 }}</span>
+          <span class="label label--small">{% if t.project != "" %}{{ t.project | truncate: 22 }} · {% endif %}running {{ t.ago }}</span>
+        </div>
+      {% else %}
+        <span class="description">Nothing running</span>
+      {% endfor %}
+      {% if working.size > 5 %}<span class="description">+ {{ working.size | minus: 5 }} more</span>{% endif %}
+    </div>
+
+    <div class="col gap--small">
+      {% for t in ready limit: 5 %}
+        <div class="col gap--xsmall">
+          <span class="title title--small" data-clamp="1">{{ t.title | truncate: 38 }}</span>
+          <span class="label label--small">{% if t.project != "" %}{{ t.project | truncate: 22 }} · {% endif %}{% if t.note != "" %}{{ t.note }} · {% endif %}{{ t.ago }} ago</span>
+        </div>
+      {% else %}
+        <span class="description">All caught up</span>
+      {% endfor %}
+      {% if ready.size > 5 %}<span class="description">+ {{ ready.size | minus: 5 }} more</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="title_bar">
+  <span class="title">T3 Threads</span>
+  <span class="instance">{{ settled_count }} settled · updated {{ updated_at }}</span>
+</div>
+</div>

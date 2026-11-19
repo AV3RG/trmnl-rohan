@@ -60,6 +60,10 @@
                 {
                     "plugin": "Visited Countries",
                     "is_active": true
+                },
+                {
+                    "plugin": "T3 Threads",
+                    "is_active": true
                 }
             ]
         }
@@ -276,6 +280,15 @@
                 "polling_header": null,
                 "polling_body": null
             }
+        },
+        {
+            "name": "T3 Threads",
+            "source": {
+                "dir": "t3-threads"
+            },
+            "settings": {},
+            "secrets": [],
+            "data_stale_minutes": 1
         }
     ]
 }
