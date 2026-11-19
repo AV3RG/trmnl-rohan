@@ -1,7 +1,7 @@
 # Override to point at another instance, e.g. COMPOSE="docker compose -p test -f other.yml"
 COMPOSE ?= docker compose
 
-.PHONY: init up down restart logs ps shell update backup plugin-deploy config-export config-restore dark-mode heal
+.PHONY: init up down restart logs ps shell update backup plugin-deploy config-export config-restore dark-mode mirror-patch heal
 
 init: ## create .env with a fresh APP_KEY (no-op if .env exists)
 	@test -f .env || { sed "s|^APP_KEY=.*|APP_KEY=base64:$$(openssl rand -base64 32)|" .env.example > .env && echo "wrote .env"; }
@@ -26,7 +26,20 @@ shell:
 
 update: backup ## bump LARAPAPER_VERSION in .env first, then run this
 	$(COMPOSE) pull
+	@$(MAKE) --no-print-directory mirror-patch
 	$(COMPOSE) up -d
+
+# Regenerate mirror/index.html: the image's tablet page plus a black page
+# background and browser bar in Dark/Night mode (otherwise iPad Safari shows a
+# white strip above the screen). Mounted over the original by docker-compose.yml.
+mirror-patch:
+	@mkdir -p mirror
+	@docker run --rm --entrypoint cat $$($(COMPOSE) config --images | head -1) /var/www/html/public/mirror/index.html \
+	  | sed -e 's|^  <meta name="viewport"|  <meta name="theme-color" content="#000000" />\n&|' \
+	        -e 's|^  </style>|    body.dark, body.night { background-color: #000000; }\n&|' > mirror/index.html.tmp
+	@grep -q 'theme-color' mirror/index.html.tmp && grep -q 'body.dark, body.night {' mirror/index.html.tmp \
+	  && mv mirror/index.html.tmp mirror/index.html && echo "wrote mirror/index.html" \
+	  || { rm -f mirror/index.html.tmp; echo "mirror patch did not apply; page layout changed upstream" >&2; exit 1; }
 
 backup: ## copy the sqlite database into backups/
 	@mkdir -p backups

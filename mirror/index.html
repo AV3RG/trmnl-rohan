@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <title>LaraPaper Mirror</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <link rel="apple-touch-icon" type="image/png" href="assets/apple-touch-icon-76x76.png" sizes="76x76" />
+  <link rel="apple-touch-icon" type="image/png" href="assets/apple-touch-icon-120x120.png" sizes="120x120" />
+  <link rel="apple-touch-icon" type="image/png" href="assets/apple-touch-icon-152x152.png" sizes="152x152" />
+  <link rel="apple-touch-icon" type="image/png" href="assets/apple-touch-icon-167x167.png" sizes="167x167" />
+  <link rel="apple-touch-icon" type="image/png" href="assets/apple-touch-icon-180x180.png" sizes="180x180" />
+
+  <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
+  <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <script>
+    var lpMirror = {
+      STORAGE_KEY: "byos_laravel_mirror_settings",
+      REQUEST_TIMEOUT: 20000, // ms, for both the API call and the image download
+      DEFAULT_REFRESH_RATE: 300, // seconds, used when the server sends no refresh_rate
+      RETRY_BASE_DELAY: 15, // seconds, doubled on every consecutive failure...
+      RETRY_MAX_DELAY: 300, // ...up to this cap
+      MAX_SILENT_FAILURES: 3, // keep showing the last good screen for this many failures
+      refreshTimer: null,
+      nextRefreshAt: 0,
+      requestId: 0,
+      failures: 0,
+      memoryStore: null,
+      storageBroken: false,
+      ui: {},
+      wakeLock: null,
+
+      showStatus: function (message) {
+        lpMirror.ui.img.style.display = "none";
+        lpMirror.ui.errorContainer.style.display = "flex";
+        lpMirror.ui.errorMessage.textContent = message;
+      },
+
+      showScreen: function (src) {
+        lpMirror.ui.img.src = src;
+        lpMirror.ui.img.style.display = "block";
+        lpMirror.ui.errorContainer.style.display = "none";
+      },
+
+      // The form always shows the saved settings: changes apply only on Save
+      showSetupForm: function () {
+        var data = lpMirror.getSettings();
+        lpMirror.ui.apiKeyInput.value = data.api_key || "";
+        lpMirror.ui.baseURLInput.value = data.base_url || "";
+        lpMirror.ui.displayModeSelect.value = data.display_mode || "";
+        lpMirror.ui.fullscreenToggle.checked = lpMirror.isFullscreenSupported() && !!data.fullscreen;
+        lpMirror.ui.wakeLockToggle.checked = !!lpMirror.isWakeLockSupported() && !!data.wake_lock;
+        lpMirror.ui.simulateDeviceToggle.checked = data.mode === "display";
+
+        // Nothing to go back to until a device is configured
+        lpMirror.ui.cancelButton.style.display = data.api_key ? "block" : "none";
+
+        lpMirror.ui.setup.style.display = "flex";
+      },
+
+      cancelSetup: function () {
+        lpMirror.hideSetupForm();
+      },
+
+      saveSetup: function (event) {
+        event.preventDefault();
+
+        var apiKey = lpMirror.ui.apiKeyInput.value;
+        var baseURL = lpMirror.ui.baseURLInput.value;
+        var displayMode = lpMirror.ui.displayModeSelect.value;
+        var fullscreenEnabled = lpMirror.ui.fullscreenToggle.checked;
+        var wakeLockEnabled = lpMirror.ui.wakeLockToggle.checked;
+        var mode = lpMirror.ui.simulateDeviceToggle.checked ? "display" : "mirror";
+
+        if (!apiKey) {
+          return;
+        }
+
+        lpMirror.saveSettings({
+          api_key: apiKey,
+          base_url: baseURL,
+          display_mode: displayMode,
+          fullscreen: fullscreenEnabled,
+          wake_lock: wakeLockEnabled,
+          mode: mode
+        });
+
+        // Still inside the Save tap, so fullscreen is allowed by the browser
+        if (fullscreenEnabled) {
+          if (!lpMirror.isFullscreenActive()) {
+            lpMirror.enterFullscreen();
+          }
+        } else {
+          lpMirror.exitFullscreen();
+        }
+
+        if (wakeLockEnabled) {
+          lpMirror.acquireWakeLock();
+        } else {
+          lpMirror.releaseWakeLock();
+        }
+
+        lpMirror.fetchDisplay();
+      },
+
+      hideSetupForm: function () {
+        lpMirror.ui.setup.style.display = "none";
+      },
+
+      isFullscreenSupported: function () {
+        return !!(
+          document.fullscreenEnabled ||
+          document.webkitFullscreenEnabled ||
+          document.msFullscreenEnabled
+        );
+      },
+
+      isFullscreenActive: function () {
+        return !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.msFullscreenElement
+        );
+      },
+
+      enterFullscreen: function () {
+        if (!lpMirror.isFullscreenSupported()) return;
+
+        var el = document.documentElement;
+        var promise;
+
+        if (el.requestFullscreen) {
+          promise = el.requestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          promise = el.webkitRequestFullscreen();
+        } else if (el.msRequestFullscreen) {
+          promise = el.msRequestFullscreen();
+        }
+
+        if (promise && promise.catch) {
+          promise.catch(function (err) {
+            console.warn("Enter fullscreen failed:", err);
+          });
+        }
+      },
+
+      exitFullscreen: function () {
+        if (!lpMirror.isFullscreenSupported()) return;
+        if (!lpMirror.isFullscreenActive()) return;
+
+        var promise;
+
+        if (document.exitFullscreen) {
+          promise = document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          promise = document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          promise = document.msExitFullscreen();
+        }
+
+        if (promise && promise.catch) {
+          promise.catch(function (err) {
+            console.warn("Exit fullscreen failed:", err);
+          });
+        }
+      },
+
+      isWakeLockSupported: function () {
+        return (
+          window.isSecureContext &&
+          navigator.wakeLock &&
+          typeof navigator.wakeLock.request === "function"
+        );
+      },
+
+      acquireWakeLock: function () {
+        if (!lpMirror.isWakeLockSupported() || lpMirror.wakeLock) {
+          return;
+        }
+
+        navigator.wakeLock.request("screen")
+          .then(function (sentinel) {
+            lpMirror.wakeLock = sentinel;
+
+            // The browser releases the lock when the page is hidden; the
+            // visibilitychange handler takes it again from the saved setting
+            sentinel.addEventListener("release", function () {
+              lpMirror.wakeLock = null;
+            });
+
+            console.log("Wake Lock active");
+          })
+          .catch(function (err) {
+            console.warn("Wake Lock failed:", err);
+            lpMirror.wakeLock = null;
+          });
+      },
+
+      releaseWakeLock: function () {
+        if (!lpMirror.wakeLock) {
+          return;
+        }
+
+        lpMirror.wakeLock.release()
+          .then(function () {
+            lpMirror.wakeLock = null;
+            console.log("Wake Lock released");
+          })
+          .catch(function (err) {
+            console.warn("Release failed:", err);
+            lpMirror.wakeLock = null;
+          });
+      },
+
+
+
+      scheduleRefresh: function (seconds) {
+        clearTimeout(lpMirror.refreshTimer);
+        lpMirror.nextRefreshAt = Date.now() + seconds * 1000;
+        console.log("Refreshing in " + seconds + " seconds...");
+        lpMirror.refreshTimer = setTimeout(function () {
+          lpMirror.fetchDisplay({ quiet: true });
+        }, seconds * 1000);
+      },
+
+      // iOS freezes timers while the page is hidden or the screen is locked:
+      // when we come back, refresh right away if the scheduled time has passed.
+      resumeRefresh: function () {
+        if (!lpMirror.nextRefreshAt) return;
+
+        var remaining = lpMirror.nextRefreshAt - Date.now();
+        if (remaining <= 1000) {
+          lpMirror.fetchDisplay({ quiet: true });
+        } else {
+          clearTimeout(lpMirror.refreshTimer);
+          lpMirror.refreshTimer = setTimeout(function () {
+            lpMirror.fetchDisplay({ quiet: true });
+          }, remaining);
+        }
+      },
+
+      handleFailure: function (message) {
+        lpMirror.failures++;
+
+        var delay = Math.min(
+          lpMirror.RETRY_BASE_DELAY * Math.pow(2, lpMirror.failures - 1),
+          lpMirror.RETRY_MAX_DELAY
+        );
+        var hasScreen = lpMirror.ui.img.style.display === "block";
+
+        console.warn(message + " (failure #" + lpMirror.failures + ")");
+
+        // On a wall display a stale screen is better than an error for a short hiccup
+        if (!hasScreen || lpMirror.failures >= lpMirror.MAX_SILENT_FAILURES) {
+          lpMirror.showStatus(message + " (retrying in " + delay + "s)");
+        }
+
+        lpMirror.scheduleRefresh(delay);
+      },
+
+      // Download the image off-screen first, so the visible one is swapped only when ready
+      loadImage: function (src, onLoad, onError) {
+        var loader = new Image();
+        var done = false;
+        var timer;
+
+        var finish = function (callback) {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          loader.onload = null;
+          loader.onerror = null;
+          callback();
+        };
+
+        timer = setTimeout(function () { finish(onError); }, lpMirror.REQUEST_TIMEOUT);
+        loader.onload = function () { finish(onLoad); };
+        loader.onerror = function () { finish(onError); };
+        loader.src = src;
+      },
+
+      fetchDisplay: function (opts) {
+        opts = opts || {};
+        clearTimeout(lpMirror.refreshTimer);
+        lpMirror.refreshTimer = null;
+        lpMirror.nextRefreshAt = 0;
+
+        // Responses of older requests are ignored
+        var requestId = ++lpMirror.requestId;
+        var isCurrent = function () { return requestId === lpMirror.requestId; };
+
+        var setup = lpMirror.getSettings();
+        var apiKey = setup.api_key;
+
+        if (!apiKey) {
+          lpMirror.showSetupForm();
+          return;
+        }
+
+        if (!opts.quiet) {
+          lpMirror.hideSetupForm();
+          lpMirror.showStatus("Loading...");
+        }
+
+        var displayMode = setup.display_mode;
+        var baseURL = setup.base_url || "https://your-byos-trmnl.com";
+
+        document.body.classList.remove("dark", "night")
+        if (displayMode) {
+          document.body.classList.add(displayMode)
+        }
+
+        var headers = {
+          "Access-Token": apiKey
+        };
+
+        // Mirror reads the current screen; display runs the cycle like a physical device
+        var isDisplayMode = setup.mode === "display";
+        var url = baseURL + (isDisplayMode ? "/api/display" : "/api/current_screen");
+        var successStatus = isDisplayMode ? 0 : 200;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+
+        try {
+          xhr.timeout = lpMirror.REQUEST_TIMEOUT;
+        } catch (e) {
+          // very old WebKit: no XHR timeout, the image timeout still applies
+        }
+
+        for (var headerName in headers) {
+          if (headers.hasOwnProperty(headerName)) {
+            xhr.setRequestHeader(headerName, headers[headerName]);
+          }
+        }
+
+        xhr.onload = function () {
+          if (!isCurrent()) return;
+
+          if (xhr.status < 200 || xhr.status >= 300) {
+            var msg = xhr.statusText;
+            if (xhr.status == 404) {
+              msg = "Maybe wrong API key";
+            }
+            lpMirror.handleFailure("Failed to fetch screen: " + xhr.status + " " + msg);
+            return;
+          }
+
+          var data;
+          try {
+            data = JSON.parse(xhr.responseText);
+          } catch (e) {
+            lpMirror.handleFailure("Error processing response: " + e.message);
+            return;
+          }
+
+          if (!data || data.status !== successStatus) {
+            lpMirror.handleFailure(
+              "Error: " + (data && (data.error || data.message || data.status))
+            );
+            return;
+          }
+
+          if (!data.image_url) {
+            lpMirror.handleFailure("No screen available yet");
+            return;
+          }
+
+          lpMirror.loadImage(data.image_url, function () {
+            if (!isCurrent()) return;
+
+            lpMirror.showScreen(data.image_url);
+            lpMirror.failures = 0;
+
+            var refreshRate = parseInt(data.refresh_rate, 10);
+            if (!(refreshRate > 0)) {
+              refreshRate = lpMirror.DEFAULT_REFRESH_RATE;
+            }
+            lpMirror.scheduleRefresh(refreshRate);
+          }, function () {
+            if (!isCurrent()) return;
+            lpMirror.handleFailure("Failed to load screen image");
+          });
+        };
+
+        xhr.onerror = function () {
+          if (!isCurrent()) return;
+          lpMirror.handleFailure("Network error: Failed to connect or request was blocked.");
+        };
+
+        xhr.ontimeout = function () {
+          if (!isCurrent()) return;
+          lpMirror.handleFailure("Network error: request timed out.");
+        };
+
+        xhr.send();
+      },
+
+      // localStorage throws on iOS <= 10 private browsing: fall back to memory
+      readStorage: function () {
+        if (lpMirror.storageBroken) return lpMirror.memoryStore;
+        try {
+          return localStorage.getItem(lpMirror.STORAGE_KEY);
+        } catch (e) {
+          lpMirror.storageBroken = true;
+          return lpMirror.memoryStore;
+        }
+      },
+
+      writeStorage: function (value) {
+        lpMirror.memoryStore = value;
+        if (lpMirror.storageBroken) return;
+        try {
+          localStorage.setItem(lpMirror.STORAGE_KEY, value);
+        } catch (e) {
+          lpMirror.storageBroken = true;
+          console.warn("localStorage unavailable: settings kept in memory only");
+        }
+      },
+
+      getSettings: function () {
+        try {
+          return JSON.parse(lpMirror.readStorage()) || {};
+        } catch (e) {
+          return {};
+        }
+      },
+
+      saveSettings: function (data) {
+        var settings = lpMirror.getSettings();
+
+        for (var key in data) {
+          if (data.hasOwnProperty(key)) {
+            settings[key] = data[key];
+          }
+        }
+
+        lpMirror.writeStorage(JSON.stringify(settings));
+        console.log("Settings saved");
+      },
+
+      cleanUrl: function () {
+        if (window.history && window.history.replaceState) {
+          try {
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname
+            );
+          } catch (e) {
+            // iOS 9 / UIWebView: silent ignore
+          }
+        }
+      },
+
+      applySettingsFromUrl: function () {
+        var query = window.location.search.substring(1);
+        if (!query) return;
+
+        var pairs = query.split("&");
+        var newSettings = {};
+        var hasOverrides = false;
+
+        for (var i = 0; i < pairs.length; i++) {
+          var parts = pairs[i].split("=");
+          if (parts.length !== 2) continue;
+
+          var key = decodeURIComponent(parts[0]);
+          var value = decodeURIComponent(parts[1]);
+
+          if (key === "api_key" && value) {
+            newSettings.api_key = value;
+            hasOverrides = true;
+          }
+
+          if (key === "base_url" && value) {
+            newSettings.base_url = value;
+            hasOverrides = true;
+          }
+
+          if (key === "mode" && (value === "display" || value === "mirror")) {
+            newSettings.mode = value;
+            hasOverrides = true;
+          }
+
+        }
+
+        if (hasOverrides) {
+          lpMirror.saveSettings(newSettings);
+          console.log("Settings overridden from URL");
+        }
+      },
+
+      setDefaultBaseUrlIfMissing: function () {
+        var settings = lpMirror.getSettings();
+
+        if (settings && settings.base_url) {
+          return;
+        }
+
+        var protocol = window.location.protocol;
+        var host = window.location.hostname;
+        var port = window.location.port;
+
+        var origin = protocol + "//" + host;
+        if (port) {
+          origin += ":" + port;
+        }
+
+        // Keep the path in front of /mirror/, if LaraPaper is served under one
+        var baseUrl = origin + window.location.pathname.replace(/\/mirror(\/[^\/]*)?$/, "");
+
+        lpMirror.saveSettings({
+          base_url: baseUrl
+        });
+
+        console.log("Default base_url set to:", baseUrl);
+      },
+
+      clearSettings: function () {
+        lpMirror.memoryStore = null;
+        try {
+          localStorage.removeItem(lpMirror.STORAGE_KEY);
+        } catch (e) {
+          // storage unavailable: nothing persisted to remove
+        }
+        console.log("Settings cleared");
+        window.location.reload();
+      },
+
+      init: function () {
+
+        // override settings from GET params
+        lpMirror.applySettingsFromUrl();
+
+        lpMirror.cleanUrl();
+
+        // default base_url
+        lpMirror.setDefaultBaseUrlIfMissing();
+
+        // screen
+        lpMirror.ui.img = document.getElementById("screen");
+        lpMirror.ui.errorContainer = document.getElementById("error-container");
+        lpMirror.ui.errorMessage = document.getElementById("error-message");
+
+        // settings
+        lpMirror.ui.apiKeyInput = document.getElementById("api_key");
+        lpMirror.ui.baseURLInput = document.getElementById("base_url");
+        lpMirror.ui.displayModeSelect = document.getElementById("display_mode");
+        lpMirror.ui.fullscreenToggle = document.getElementById("fullscreenToggle");
+        lpMirror.ui.wakeLockToggle = document.getElementById("wakeLockToggle");
+        lpMirror.ui.simulateDeviceToggle = document.getElementById("simulateDeviceToggle");
+        lpMirror.ui.setup = document.getElementById("setup");
+        lpMirror.ui.cancelButton = document.getElementById("cancelSetup");
+
+        // Fullscreen toggle (applied on Save)
+        if (!lpMirror.isFullscreenSupported()) {
+          lpMirror.ui.fullscreenToggle.disabled = true;
+          lpMirror.ui.fullscreenToggle.parentElement.style.opacity = "0.5";
+          lpMirror.ui.fullscreenToggle.parentElement.style.cursor = "not-allowed";
+        }
+
+        // Catch up on refreshes missed while the page was hidden / the iPad was locked
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "visible") {
+            lpMirror.resumeRefresh();
+          }
+        });
+        window.addEventListener("pageshow", function (e) {
+          if (e.persisted) {
+            lpMirror.resumeRefresh();
+          }
+        });
+
+        var wakeLockHint = document.getElementById("wakeLockHint");
+
+        // Wake Lock toggle (applied on Save)
+        if (lpMirror.isWakeLockSupported()) {
+
+          lpMirror.ui.wakeLockToggle.disabled = false;
+          lpMirror.ui.wakeLockToggle.parentElement.style.opacity = "1";
+          lpMirror.ui.wakeLockToggle.parentElement.style.cursor = "pointer";
+
+          if (wakeLockHint) wakeLockHint.style.display = "none";
+
+          // The lock is dropped while the page is hidden: take it again
+          document.addEventListener("visibilitychange", function () {
+            if (
+              document.visibilityState === "visible" &&
+              lpMirror.getSettings().wake_lock
+            ) {
+              lpMirror.acquireWakeLock();
+            }
+          });
+
+        } else {
+
+          // unsupported (HTTP or old browser)
+          lpMirror.ui.wakeLockToggle.disabled = true;
+          lpMirror.ui.wakeLockToggle.checked = false;
+          lpMirror.ui.wakeLockToggle.parentElement.style.opacity = "0.5";
+          lpMirror.ui.wakeLockToggle.parentElement.style.cursor = "not-allowed";
+
+          if (!window.isSecureContext && wakeLockHint) {
+            wakeLockHint.style.display = "block";
+          }
+
+        }
+
+        // get settings from localstorage
+        var settings = lpMirror.getSettings();
+
+        // show setup form if missing apikey
+        if (!settings || !settings.api_key) {
+          lpMirror.showSetupForm();
+        } else {
+          lpMirror.fetchDisplay();
+        }
+
+        // One-shot listeners are removed by hand: iOS 9 reads an options
+        // object ({ once: true }) as useCapture = true
+        // Auto fullscreen at first click/touch if option enabled
+        if (settings.fullscreen && lpMirror.isFullscreenSupported()) {
+          var activateFullscreenOnce = function () {
+            lpMirror.enterFullscreen();
+            document.removeEventListener("click", activateFullscreenOnce);
+            document.removeEventListener("touchstart", activateFullscreenOnce);
+          };
+          document.addEventListener("click", activateFullscreenOnce);
+          document.addEventListener("touchstart", activateFullscreenOnce);
+        }
+
+        // Auto Wake Lock at first click/touch if option enabled
+        if (settings.wake_lock && lpMirror.isWakeLockSupported()) {
+          var acquireWakeLockOnce = function () {
+            lpMirror.acquireWakeLock();
+            document.removeEventListener("click", acquireWakeLockOnce);
+            document.removeEventListener("touchstart", acquireWakeLockOnce);
+          };
+          document.addEventListener("click", acquireWakeLockOnce);
+          document.addEventListener("touchstart", acquireWakeLockOnce);
+        }
+      } //init end
+
+    };
+
+    document.addEventListener("DOMContentLoaded", function () {
+      lpMirror.init();
+    });
+  </script>
+  <style>
+    body {
+      overflow: hidden;
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    a {
+      color: #f54900;
+    }
+
+    #screen-container,
+    #setup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow-y: auto;
+    }
+
+    /*
+     * Panel centred with auto margins instead of justify-content: when it is
+     * taller than the viewport (iPad landscape) it starts at the top and can be
+     * scrolled, instead of being clipped above the fold.
+     */
+    #setup {
+      justify-content: flex-start;
+      padding: 1em;
+      box-sizing: border-box;
+      -webkit-overflow-scrolling: touch;
+      background-color: #3d3d3e;
+      z-index: 2;
+    }
+
+    #setup-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: #ffffff;
+      padding: 2em;
+      margin: auto;
+      border-radius: 1em;
+      box-shadow: 0 0.5em 2em rgba(0, 0, 0, 1);
+    }
+
+    #setup-panel img {
+      margin-bottom: 2em;
+    }
+
+    #screen {
+      cursor: pointer;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background-color: #000000;
+    }
+
+    body.dark #screen,
+    body.night #screen {
+      -webkit-filter: invert(1) hue-rotate(180deg); /* iOS < 9.3 */
+      filter: invert(1) hue-rotate(180deg);
+      background-color: #ffffff;
+    }
+
+    #red-overlay {
+      background-color: #ff0000;
+      mix-blend-mode: darken;
+      display: none;
+    }
+
+    body.night #red-overlay {
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    #error-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .dark #error-container,
+    .dark #screen-container,
+    .night #error-container,
+    .night #screen-container {
+      background-color: #000000;
+      color: #ffffff;
+    }
+
+    #error-message {
+      font-size: 1.5em;
+      margin-bottom: 1em;
+    }
+
+    .form-control {
+      font-size: 1.25em;
+      width: 14em;
+      padding: 0.5em;
+      border: 1px solid #ccc;
+      border-radius: 0.5em;
+      display: block;
+    }
+
+    label {
+      display: block;
+      font-size: 1.25em;
+      margin-bottom: 0.5em;
+      cursor: pointer;
+    }
+
+    fieldset {
+      border: none;
+      margin: 0;
+      padding: 0;
+      margin-bottom: 2em;
+    }
+
+    .btn {
+      font-size: 1.25em;
+      padding: 0.5em 1em;
+      background-color: #f54900;
+      color: white;
+      border: none;
+      border-radius: 0.5em;
+      cursor: pointer;
+      display: block;
+      width: 100%;
+    }
+
+    .btn-secondary {
+      background-color: #777;
+    }
+
+    .btn-clear {
+      background-color: #c0392b;
+    }
+
+    /* Cancel + Clear side by side; no flex `gap` (unsupported on iOS 9) */
+    .btn-row {
+      display: flex;
+      margin-top: 1em;
+    }
+
+    .btn-row .btn {
+      flex: 1;
+      width: auto;
+      padding-left: 0.5em;
+      padding-right: 0.5em;
+    }
+
+    /* margin on Cancel, so Clear has none when Cancel is hidden */
+    #cancelSetup {
+      margin-left: 0.5em;
+    }
+
+    #error-container .btn {
+      margin-left: 0.5em;
+      margin-right: 0.5em;
+    }
+
+    .night #error-container .btn {
+      color: #000000;
+    }
+
+    select {
+      display: block;
+      width: 100%;
+      font-size: 1.25em;
+      padding: 0.5em;
+      border: 1px solid #ccc;
+      border-radius: 0.5em;
+      background-color: #ffffff;
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1em;
+      flex-wrap: nowrap;
+    }
+
+    .setting-row label,
+    .setting-row .toggle-label {
+      font-size: 1.25em;
+      margin: 0;
+      cursor: default;
+    }
+
+    .setting-row select,
+    .setting-row .switch {
+      width: auto;
+      min-width: 52px;
+    }
+
+    /* fixed height only on the switch: the select needs room for its padding */
+    .setting-row .switch {
+      height: 28px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 52px;
+      height: 28px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      /* no `inset` shorthand: unsupported before Safari 14.1 */
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      background-color: #ccc;
+      border-radius: 28px;
+      transition: background-color 0.2s ease;
+    }
+
+    .slider::before {
+      content: "";
+      position: absolute;
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      top: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+    }
+
+    .switch input:checked+.slider {
+      background-color: #f54900;
+    }
+
+    .switch input:checked+.slider::before {
+      transform: translateX(24px);
+    }
+
+    .switch input:disabled+.slider {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .switch input:disabled+.slider::before {
+      background-color: #eee;
+    }
+
+    .form-select-small {
+      width: 6em;
+      font-size: 1em;
+      padding: 0.4em 0.5em;
+      border: 1px solid #ccc;
+      border-radius: 0.5em;
+      background-color: #ffffff;
+    }
+
+    .setting-hint {
+      font-size: 0.85em;
+      color: #777;
+      margin-top: 0.25em;
+    }
+
+    /*
+     * Float layout for old Safari (iOS 9). `inset` support (Safari 14.1+) is
+     * used as a marker so modern small screens keep the flex layout.
+     */
+    @supports not (inset: 0) {
+      .setting-row {
+        display: block;
+        overflow: hidden;
+      }
+
+      .setting-row label,
+      .setting-row .toggle-label {
+        float: left;
+        line-height: 28px;
+        margin-right: 0.5em;
+      }
+
+      .setting-row select,
+      .setting-row .switch {
+        float: right;
+      }
+    }
+    body.dark, body.night { background-color: #000000; }
+  </style>
+</head>
+
+<body>
+  <div id="setup" style="display: none;">
+    <div id="setup-panel">
+      <img src="assets/logo--brand.svg" alt="LaraPaper" />
+
+      <form onsubmit="return lpMirror.saveSetup(event)">
+
+        <fieldset>
+          <label for="base_url">Custom Server URL</label>
+          <input name="base_url" id="base_url" type="text" placeholder="https://your-byos-trmnl.com"
+            class="form-control" value="" autocapitalize="off" autocorrect="off" autocomplete="off"
+            spellcheck="false" />
+        </fieldset>
+
+        <fieldset>
+          <label for="api_key">Device API Key</label>
+          <input name="api_key" id="api_key" type="text" placeholder="API Key" class="form-control" required
+            autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" />
+        </fieldset>
+
+        <fieldset class="setting-row">
+          <label for="display_mode">Display Mode</label>
+          <select id="display_mode" name="display_mode" class="form-select-small">
+            <option value="" selected>Light</option>
+            <option value="dark">Dark</option>
+            <option value="night">Night</option>
+          </select>
+        </fieldset>
+
+        <fieldset class="setting-row">
+          <span class="toggle-label">Fullscreen</span>
+          <label class="switch">
+            <input type="checkbox" id="fullscreenToggle">
+            <span class="slider"></span>
+          </label>
+        </fieldset>
+
+        <fieldset class="setting-row">
+          <div>
+            <span class="toggle-label">Screen Wake Lock</span>
+            <div id="wakeLockHint" class="setting-hint" style="display:none;">
+              Requires HTTPS
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="wakeLockToggle">
+            <span class="slider"></span>
+          </label>
+        </fieldset>
+
+        <fieldset class="setting-row">
+          <div>
+            <span class="toggle-label">Simulate physical device</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="simulateDeviceToggle">
+            <span class="slider"></span>
+          </label>
+        </fieldset>
+
+        <button class="btn">Save</button>
+        <div class="btn-row">
+          <button class="btn btn-clear" type="button" onclick="lpMirror.clearSettings()">Clear settings</button>
+          <button class="btn btn-secondary" type="button" id="cancelSetup"
+            onclick="lpMirror.cancelSetup()" style="display: none;">Cancel</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <div id="screen-container">
+    <div id="red-overlay"></div>
+    <img id="screen" onclick="lpMirror.showSetupForm()" style="display: none;">
+
+    <div id="error-container" style="display: none">
+      <div id="error-message"></div>
+      <div style="display: flex; margin-top: 1em">
+        <button class="btn" onclick="lpMirror.showSetupForm()">Setup</button>
+        <button class="btn btn-secondary" onclick="lpMirror.fetchDisplay()">Retry</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
